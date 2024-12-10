@@ -3,107 +3,106 @@ import face_recognition
 import os
 import numpy as np
 
-class FaceRecognition:
-    def __init__(self):
-        self.known_face_encodings = []
-        self.known_face_names = []
-        self.load_known_faces()
+def capture_and_recognize_faces():
+    # Ініціалізація відеокамери
+    video_capture = cv2.VideoCapture(0)
 
-    def load_known_faces(self):
-        # Create directory for known faces if it doesn't exist
-        known_faces_dir = 'known_faces'
-        if not os.path.exists(known_faces_dir):
-            os.makedirs(known_faces_dir)
+    # Створення директорії для збереження облич, якщо вона не існує
+    if not os.path.exists('known_faces'):
+        os.makedirs('known_faces')
 
-        # Load previously saved faces
-        for filename in os.listdir(known_faces_dir):
-            if filename.endswith(('.jpg', '.png', '.jpeg')):
-                image_path = os.path.join(known_faces_dir, filename)
-                face_image = face_recognition.load_image_file(image_path)
+    known_face_encodings = []
+    known_face_names = []
 
-                # Get face encoding
-                face_encoding = face_recognition.face_encodings(face_image)
+    # Завантаження збережених облич
+    for filename in os.listdir('known_faces'):
+        filepath = os.path.join('known_faces', filename)
+        image = face_recognition.load_image_file(filepath)
+        encodings = face_recognition.face_encodings(image)
+        if encodings:
+            encoding = encodings[0]
+            known_face_encodings.append(encoding)
+            name = os.path.splitext(filename)[0]
+            known_face_names.append(name)
+        else:
+            print(f"Не вдалося знайти обличчя на зображенні {filename}. Перевірте файл.")
 
-                if face_encoding:
-                    # Extract name from filename
-                    name = os.path.splitext(filename)[0].replace('face_', '')
+    while True:
+        # Захоплення кадру
+        ret, frame = video_capture.read()
 
-                    self.known_face_encodings.append(face_encoding[0])
-                    self.known_face_names.append(name)
+        # Пошук облич на кадрі
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        face_locations = face_recognition.face_locations(rgb_frame)
+        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
 
-    def capture_and_save_face(self):
-        # Initialize video capture
-        video_capture = cv2.VideoCapture(0)
+        # Розпізнавання облич
+        face_names = []
+        for face_encoding in face_encodings:
+            matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+            name = "Unknown"
 
-        while True:
-            # Capture frame
-            ret, frame = video_capture.read()
+            if True in matches:
+                first_match_index = matches.index(True)
+                name = known_face_names[first_match_index]
 
-            # Find faces in the frame
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            face_locations = face_recognition.face_locations(rgb_frame)
-            face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+            face_names.append(name)
 
-            # Draw rectangles around faces and recognize
-            for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-                # Draw rectangle around face
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-
-                # Recognize face
-                matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
-                name = "Unknown"
-
-                if True in matches:
-                    first_match_index = matches.index(True)
-                    name = self.known_face_names[first_match_index]
-
-                # Add name near rectangle
-                cv2.putText(frame, name, (left, top - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-            # Add instructions to the screen
-            instructions = "Press 'c' to capture face, 'q' to quit"
-            cv2.putText(frame, instructions, (10, 30),
+        # Малювання прямокутників та підписів
+        for (top, right, bottom, left), name in zip(face_locations, face_names):
+            cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+            cv2.putText(frame, name, (left, top - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-            # Show frame
-            cv2.imshow('Face Recognition', frame)
+        # Додавання інструкцій на екран
+        instructions = "Press 'c' to capture face, 'q' to quit"
+        cv2.putText(frame, instructions, (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-            # Process key presses
-            key = cv2.waitKey(1) & 0xFF
+        # Показ кадру
+        cv2.imshow('Face Recognition', frame)
 
-            # Press 'c' to capture face
-            if key == ord('c') and face_locations:
-                # Take the first detected face
-                top, right, bottom, left = face_locations[0]
-                face_image = frame[top:bottom, left:right]
+        # Обробка натискань клавіш
+        key = cv2.waitKey(1) & 0xFF
 
-                # Prompt for user name
-                name = input("Enter a name for this face: ").strip()
+        # Натиснення 'c' для захоплення обличчя
+        if key == ord('c'):
+            user_name = input("Введіть ваше ім'я: ")
+            if user_name:
+                if face_locations:
+                    top, right, bottom, left = face_locations[0]
+                    face_image = frame[top:bottom, left:right]
 
-                if name:
-                    # Generate filename
-                    filename = f'known_faces/{name}.jpg'
-
-                    # Save face image
+                    # Зберігаємо зображення обличчя
+                    filename = f'known_faces/{user_name}.jpg'
                     cv2.imwrite(filename, face_image)
 
-                    # Add face to database
-                    face_encoding = face_recognition.face_encodings(face_image)[0]
-                    self.known_face_encodings.append(face_encoding)
-                    self.known_face_names.append(name)
+                    # Оновлення списку збережених облич
+                    image = face_recognition.load_image_file(filename)
+                    encodings = face_recognition.face_encodings(image)
+                    if encodings:
+                        encoding = encodings[0]
+                        known_face_encodings.append(encoding)
+                        known_face_names.append(user_name)
+                        print(f"Обличчя збережено як {filename}")
+                    else:
+                        print(f"Не вдалося знайти обличчя на зображенні {filename}. Перевірте якість зображення.")
+                        os.remove(filename)  # Видалити некоректне зображення
 
-                    print(f"Face for {name} saved")
+                    # Показуємо повідомлення на екрані
+                    cv2.putText(frame, "Face Captured!", (10, 60),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    cv2.imshow('Face Recognition', frame)
+                    cv2.waitKey(1000)  # Показуємо повідомлення на секунду
 
-            # Quit on 'q' press
-            elif key == ord('q'):
-                break
+        # Вихід при натисканні 'q'
+        elif key == ord('q'):
+            break
 
-        # Release resources
-        video_capture.release()
-        cv2.destroyAllWindows()
+    # Звільнення ресурсів
+    video_capture.release()
+    cv2.destroyAllWindows()
 
-# Run the function
+# Запуск функції
 if __name__ == "__main__":
-    face_rec = FaceRecognition()
-    face_rec.capture_and_save_face()
+    capture_and_recognize_faces()
