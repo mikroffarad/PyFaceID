@@ -162,4 +162,4 @@ cython_debug/
 #.idea/
 
 # ====Project====
-known_faces/
+src/known_faces/
