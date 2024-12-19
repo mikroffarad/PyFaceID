@@ -7,7 +7,12 @@ from tkinter import simpledialog
 
 def capture_and_recognize_faces():
     # Initialize the webcam
-    video_capture = cv2.VideoCapture(2)
+
+    video_capture_number = int(input("Enter a video capture source (0 by default): "));
+    if video_capture_number == "":
+        video_capture_number = 0
+
+    video_capture = cv2.VideoCapture(video_capture_number)
 
     # Create directory for saving faces if it doesn't exist
     if not os.path.exists('known_faces'):
