@@ -8,7 +8,7 @@ from tkinter import simpledialog
 def capture_and_recognize_faces():
     # Initialize the webcam
 
-    video_capture_number = int(input("Enter a video capture source (0 by default): "));
+    video_capture_number = int(input("Enter a video capture source (0 by default): "))
     if video_capture_number == "":
         video_capture_number = 0
 
@@ -42,6 +42,8 @@ def capture_and_recognize_faces():
         root.destroy()  # Close the window after input
         return user_name
 
+    show_landmarks = False  # Variable to toggle landmarks
+
     while True:
         # Capture a frame
         ret, frame = video_capture.read()
@@ -50,6 +52,7 @@ def capture_and_recognize_faces():
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         face_locations = face_recognition.face_locations(rgb_frame)
         face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+        face_landmarks_list = face_recognition.face_landmarks(rgb_frame)
 
         # Recognize faces
         face_names = []
@@ -69,8 +72,15 @@ def capture_and_recognize_faces():
             cv2.putText(frame, name, (left, top - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
+        # Draw landmarks if enabled
+        if show_landmarks:
+            for landmarks in face_landmarks_list:
+                for feature, points in landmarks.items():
+                    for point in points:
+                        cv2.circle(frame, point, 2, (255, 0, 0), -1)
+
         # Add instructions to the screen
-        instructions = "Press 'c' to capture face, 'q' to quit"
+        instructions = "Press 'c' to capture face, 'q' to quit, 'v' to toggle landmarks"
         cv2.putText(frame, instructions, (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
@@ -109,6 +119,10 @@ def capture_and_recognize_faces():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                     cv2.imshow('Face Recognition', frame)
                     cv2.waitKey(1000)  # Display the message for a second
+
+        # Press 'v' to toggle face landmarks
+        elif key == ord('v'):
+            show_landmarks = not show_landmarks
 
         # Exit on pressing 'q'
         elif key == ord('q'):
