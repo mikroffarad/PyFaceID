@@ -162,4 +162,4 @@ cython_debug/
 #.idea/
 
 # ====Project====
-src/known_faces/
+face_data.json
