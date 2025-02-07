@@ -206,6 +206,8 @@ class FaceRecognitionApp(QMainWindow):
             if name not in existing_names:
                 try:
                     encoding = np.load(encoding_save_path)
+                    # Завантажуємо зображення у QPixmap
+                    pixmap = QPixmap(image_path)
                     face_entry = {
                         "id": self._get_next_id(),
                         "name": name,
@@ -213,13 +215,14 @@ class FaceRecognitionApp(QMainWindow):
                         "image_path": image_path,
                         "encoding_path": encoding_save_path,
                         "encoding": encoding,
-                        "pixmap": None
+                        "pixmap": pixmap  # збережемо завантажене зображення
                     }
                     self.saved_faces.append(face_entry)
                     self.saved_list.addItem(face_entry["name"])
                     print(f"Завантажено обличчя: {image_path}")
                 except Exception as e:
                     print(f"Помилка завантаження обличчя {image_path}: {e}")
+
     
     def _get_next_id(self):
         """Повертає наступний унікальний ідентифікатор."""
@@ -441,8 +444,12 @@ class FaceRecognitionApp(QMainWindow):
         if face is None:
             return
         
+        # Якщо pixmap не завантажено, завантажуємо його з image_path
+        if face["pixmap"] is None and os.path.exists(face["image_path"]):
+            face["pixmap"] = QPixmap(face["image_path"])
+        
         dlg = FaceDialog(face_pixmap=face["pixmap"] if face["pixmap"] is not None else QPixmap(), 
-                         init_name=face["name"], init_description=face["description"], parent=self)
+                        init_name=face["name"], init_description=face["description"], parent=self)
         result = dlg.exec()
         if result == QDialog.Accepted:
             name, description = dlg.getData()
