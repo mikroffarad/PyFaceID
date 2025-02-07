@@ -8,7 +8,7 @@ import face_recognition
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QLabel, QPushButton, QListWidget, 
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit, 
-                               QDialogButtonBox)
+                               QDialogButtonBox, QFileDialog, QMessageBox)
 from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop
 from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
 
@@ -22,41 +22,86 @@ class FaceDialog(QDialog):
     """
     Діалогове вікно для введення/редагування інформації про обличчя.
     Показує зображення обличчя, поле для імені та опису.
+    Додано кнопку "Change Photo" для зміни зображення.
     """
-    def __init__(self, face_pixmap, init_name="", init_description="", parent=None):
+    def __init__(self, face_pixmap, init_name="", init_description="", init_encoding=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Face Capture / Edit")
         self.setModal(True)
         self.resize(400, 500)
         
+        self.face_pixmap = face_pixmap
+        self.face_encoding = init_encoding
+        
         layout = QVBoxLayout(self)
         
-        # Відображення обличчя
         self.face_label = QLabel()
         self.face_label.setAlignment(Qt.AlignCenter)
-        self.face_label.setPixmap(face_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        if not face_pixmap.isNull():
+            self.face_label.setPixmap(face_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         layout.addWidget(self.face_label)
         
-        # Поле для імені
+        self.change_photo_btn = QPushButton("Change Photo")
+        self.change_photo_btn.clicked.connect(self.change_photo)
+        layout.addWidget(self.change_photo_btn)
+        
         self.name_edit = QLineEdit(init_name)
         self.name_edit.setPlaceholderText("Enter name")
         layout.addWidget(QLabel("Name:"))
         layout.addWidget(self.name_edit)
         
-        # Поле для опису
-        self.desc_edit = QTextEdit(init_description)
+        self.desc_edit = QTextEdit()
+        self.desc_edit.setPlainText(init_description)
         self.desc_edit.setPlaceholderText("Enter description")
         layout.addWidget(QLabel("Description:"))
         layout.addWidget(self.desc_edit)
         
-        # Кнопки Save/Cancel
         self.button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
     
+    def change_photo(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Image",
+            "",
+            "Image Files (*.jpg *.jpeg *.png *.bmp)",
+            options=QFileDialog.DontUseNativeDialog
+        )
+        if file_path:
+            try:
+                image = face_recognition.load_image_file(file_path)
+                face_locations = face_recognition.face_locations(image, model="hog")
+                if not face_locations:
+                    QMessageBox.warning(self, "Error", "No face detected in the selected image.")
+                    return
+                top, right, bottom, left = face_locations[0]
+                face_crop = image[top:bottom, left:right]
+                encodings = face_recognition.face_encodings(image, [(top, right, bottom, left)])
+                if not encodings:
+                    QMessageBox.warning(self, "Error", "Unable to compute face encoding for the selected image.")
+                    return
+                encoding = encodings[0]
+                new_pixmap = self.numpy2pixmap(face_crop)
+                self.face_pixmap = new_pixmap
+                self.face_encoding = encoding
+                self.face_label.setPixmap(new_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Error processing image: {e}")
+    
+    def numpy2pixmap(self, image_np):
+        image_np = np.ascontiguousarray(image_np)
+        h, w, ch = image_np.shape
+        bytes_per_line = ch * w
+        qt_image = QImage(image_np.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        return QPixmap.fromImage(qt_image)
+    
     def getData(self):
-        return self.name_edit.text(), self.desc_edit.toPlainText()
+        return (self.name_edit.text(),
+                self.desc_edit.toPlainText(),
+                self.face_pixmap,
+                self.face_encoding)
 
 
 class FaceRecognitionApp(QMainWindow):
@@ -231,10 +276,6 @@ class FaceRecognitionApp(QMainWindow):
         return max(face["id"] for face in self.saved_faces) + 1
     
     def save_saved_faces(self):
-        """
-        Зберігаємо метадані у JSON (без кодування). Кодування та зображення вже збережено
-        у окремих файлах.
-        """
         try:
             data = []
             for face in self.saved_faces:
@@ -245,10 +286,11 @@ class FaceRecognitionApp(QMainWindow):
                     "image_path": face.get("image_path", ""),
                     "encoding_path": face.get("encoding_path", "")
                 })
-            with open(self.SAVED_FACES_FILE, "w") as f:
-                json.dump(data, f)
+            with open(self.SAVED_FACES_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
         except Exception as e:
             print("Помилка збереження облич:", e)
+
     
     def update_frame(self):
         ret, frame = self.capture.read()
@@ -389,37 +431,40 @@ class FaceRecognitionApp(QMainWindow):
         return QPixmap.fromImage(qt_image)
     
     def capture_frames(self):
-        """
-        Для кожного невідомого обличчя відкриваємо діалогове вікно.
-        Якщо користувач натискає Save, обличчя переноситься до збережених.
-        При цьому зображення зберігається як файл із ім'ям, яке ввів користувач,
-        а кодування зберігається у вигляді окремого .npy файлу.
-        """
         unknowns = self.unknown_faces.copy()
         for face in unknowns:
-            dlg = FaceDialog(face_pixmap=face["pixmap"], init_name=face["name"], init_description=face["description"], parent=self)
+            dlg = FaceDialog(
+                face_pixmap=face["pixmap"],
+                init_name=face["name"],
+                init_description=face["description"],
+                init_encoding=face.get("encoding", None),
+                parent=self
+            )
             result = dlg.exec()
             if result == QDialog.Accepted:
-                name, description = dlg.getData()
-                # Якщо ім'я не пусте, використовуємо його; інакше залишаємо поточне
+                name, description, new_pixmap, new_encoding = dlg.getData()
                 face["name"] = name if name else face["name"]
                 face["description"] = description
+                if new_pixmap is not None and not new_pixmap.isNull():
+                    face["pixmap"] = new_pixmap
+                if new_encoding is not None:
+                    face["encoding"] = new_encoding
 
-                # Формуємо шляхи для збереження зображення та кодування
+                # Формуємо шляхи збереження за новим іменем (якщо ім'я змінено)
                 image_save_path = os.path.join(self.SAVED_FACES_FOLDER, f"{face['name']}.jpg")
                 encoding_save_path = os.path.join(self.SAVED_FACES_FOLDER, f"{face['name']}.npy")
-                
+
                 if not os.path.exists(self.SAVED_FACES_FOLDER):
                     os.makedirs(self.SAVED_FACES_FOLDER)
-                # Зберігаємо зображення (якщо face["pixmap"] є QPixmap)
+                
+                # Зберігаємо нову фотографію та кодування – вони перезапишуть старі файли
                 face["pixmap"].save(image_save_path, "JPG")
-                # Зберігаємо кодування у .npy файл
                 np.save(encoding_save_path, face["encoding"])
                 
-                # Оновлюємо метадані запису
+                # Оновлюємо метадані – зберігаємо шляхи до файлів
                 face["image_path"] = image_save_path
                 face["encoding_path"] = encoding_save_path
-                
+
                 self.saved_faces.append(face)
                 self.unknown_faces = [f for f in self.unknown_faces if f["id"] != face["id"]]
                 self._remove_item_from_list(self.current_list, face["name"])
@@ -443,19 +488,43 @@ class FaceRecognitionApp(QMainWindow):
         face = next((f for f in self.saved_faces if f["name"] == item.text()), None)
         if face is None:
             return
-        
-        # Якщо pixmap не завантажено, завантажуємо його з image_path
+
+        # Якщо pixmap не завантажено – завантажуємо з image_path
         if face["pixmap"] is None and os.path.exists(face["image_path"]):
             face["pixmap"] = QPixmap(face["image_path"])
-        
-        dlg = FaceDialog(face_pixmap=face["pixmap"] if face["pixmap"] is not None else QPixmap(), 
-                        init_name=face["name"], init_description=face["description"], parent=self)
+
+        dlg = FaceDialog(
+            face_pixmap=face["pixmap"] if face["pixmap"] is not None else QPixmap(),
+            init_name=face["name"],
+            init_description=face["description"],
+            init_encoding=face.get("encoding", None),
+            parent=self
+        )
         result = dlg.exec()
         if result == QDialog.Accepted:
-            name, description = dlg.getData()
+            name, description, new_pixmap, new_encoding = dlg.getData()
             face["name"] = name if name else face["name"]
             face["description"] = description
+            if new_pixmap is not None and not new_pixmap.isNull():
+                face["pixmap"] = new_pixmap
+            if new_encoding is not None:
+                face["encoding"] = new_encoding
+
+            # Формуємо нові шляхи для збереження (якщо ім'я змінено)
+            image_save_path = os.path.join(self.SAVED_FACES_FOLDER, f"{face['name']}.jpg")
+            encoding_save_path = os.path.join(self.SAVED_FACES_FOLDER, f"{face['name']}.npy")
+            
+            # Зберігаємо нові фотографію та кодування
+            face["pixmap"].save(image_save_path, "JPG")
+            np.save(encoding_save_path, face["encoding"])
+            
+            # Оновлюємо метадані – шляхи до файлів
+            face["image_path"] = image_save_path
+            face["encoding_path"] = encoding_save_path
+
             item.setText(face["name"])
+
+
     
     def delete_face(self):
         selected_items = self.saved_list.selectedItems()
