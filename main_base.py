@@ -152,7 +152,7 @@ class FaceRecognitionApp(QMainWindow):
         bottom_layout = QHBoxLayout(bottom_panel)
         bottom_layout.setContentsMargins(0, 10, 0, 0)
         
-        self.capture_btn = QPushButton("Capture (c)")
+        self.capture_btn = QPushButton("Capture")
         self.capture_btn.clicked.connect(self.capture_frames)
         bottom_layout.addWidget(self.capture_btn)
         
@@ -172,9 +172,9 @@ class FaceRecognitionApp(QMainWindow):
         self.saved_list = QListWidget()
         right_layout.addWidget(self.saved_list)
         
-        self.edit_btn = QPushButton("Edit (e)")
-        self.delete_btn = QPushButton("Delete (d)")
-        self.quit_btn = QPushButton("Quit (q)")
+        self.edit_btn = QPushButton("Edit")
+        self.delete_btn = QPushButton("Delete")
+        self.quit_btn = QPushButton("Quit")
         self.quit_btn.clicked.connect(self.close)
         
         self.edit_btn.clicked.connect(self.edit_face)
