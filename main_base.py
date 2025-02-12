@@ -570,9 +570,34 @@ class FaceRecognitionApp(QMainWindow):
         if not selected_items:
             return
         item = selected_items[0]
-        # Можна також видалити відповідні файли з диска (якщо потрібно)
-        self.saved_faces = [f for f in self.saved_faces if f["name"] != item.text()]
+        # Знаходимо запис обличчя за ім'ям
+        face_to_delete = next((face for face in self.saved_faces if face["name"] == item.text()), None)
+        if face_to_delete is None:
+            return
+
+        # Видаляємо файли, якщо вони існують
+        image_path = face_to_delete.get("image_path", "")
+        encoding_path = face_to_delete.get("encoding_path", "")
+
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+                print(f"Видалено файл зображення: {image_path}")
+            except Exception as e:
+                print(f"Не вдалося видалити файл {image_path}: {e}")
+
+        if encoding_path and os.path.exists(encoding_path):
+            try:
+                os.remove(encoding_path)
+                print(f"Видалено файл кодування: {encoding_path}")
+            except Exception as e:
+                print(f"Не вдалося видалити файл {encoding_path}: {e}")
+
+        # Видаляємо запис з saved_faces
+        self.saved_faces = [face for face in self.saved_faces if face["name"] != item.text()]
+        # Видаляємо елемент зі списку "ALL SAVED"
         self.saved_list.takeItem(self.saved_list.row(item))
+
     
     def closeEvent(self, event):
         self.capture.release()
