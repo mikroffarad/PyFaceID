@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLabel, QPushButton, QListWidget, 
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit, 
                                QDialogButtonBox, QFileDialog, QMessageBox)
-from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop
+from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop, QRect
 from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
 
 # Вибір джерела відео (наприклад, 0 для вебкамери)
@@ -120,6 +120,8 @@ class FaceRecognitionApp(QMainWindow):
         self.saved_faces = []     # збережені обличчя
         self.next_unknown_id = 1
         
+        self.draw_landmarks = False # False – рамки, True – landmarks
+
         # --- Побудова графічного інтерфейсу ---
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -299,13 +301,13 @@ class FaceRecognitionApp(QMainWindow):
 
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         face_locations = face_recognition.face_locations(rgb_frame, model=self.detection_model)
-        
-        # Якщо у вас вже є логіка для оновлення невідомих облич (прапор "detected" тощо),
-        # вона залишається без змін.
+
+        # Скидаємо прапорець "detected" у невідомих облич
         for face in self.unknown_faces:
             face["detected"] = False
 
         detected_faces = []
+        # Обходимо кожну знайдену область обличчя
         for (top, right, bottom, left) in face_locations:
             x, y = left, top
             w, h = right - left, bottom - top
@@ -314,6 +316,13 @@ class FaceRecognitionApp(QMainWindow):
             if not encodings:
                 continue
             encoding = encodings[0]
+
+            # Отримуємо landmarks для цього обличчя (для поточної області)
+            landmarks = face_recognition.face_landmarks(rgb_frame, face_locations=[(top, right, bottom, left)])
+            if landmarks:
+                landmarks = landmarks[0]
+            else:
+                landmarks = {}
 
             # Пошук серед збережених облич
             matched = False
@@ -330,7 +339,8 @@ class FaceRecognitionApp(QMainWindow):
                         detected_faces.append({
                             "bbox": (x, y, w, h),
                             "label": label,
-                            "description": description
+                            "description": description,
+                            "landmarks": landmarks
                         })
                         matched = True
                         break
@@ -348,7 +358,8 @@ class FaceRecognitionApp(QMainWindow):
                     detected_faces.append({
                         "bbox": (x, y, w, h),
                         "label": face["name"],
-                        "description": face["description"]
+                        "description": face["description"],
+                        "landmarks": landmarks
                     })
                     matched = True
                     break
@@ -372,49 +383,77 @@ class FaceRecognitionApp(QMainWindow):
                 detected_faces.append({
                     "bbox": (x, y, w, h),
                     "label": name,
-                    "description": ""
+                    "description": "",
+                    "landmarks": landmarks
                 })
 
-        # Якщо є невідомі, яких не було виявлено, вони обробляються окремо (з видаленням зі списку)
+        # Видаляємо невиявлені обличчя зі списку невідомих
         removed_faces = [face for face in self.unknown_faces if not face.get("detected", False)]
         for face in removed_faces:
             self.unknown_faces.remove(face)
-        
-        # Підготовка зображення для відображення (залишаємо існуючу логіку QImage/QPixmap)
+
+        # Підготовка зображення для відображення
         h_frame, w_frame, ch = rgb_frame.shape
         bytes_per_line = ch * w_frame
         qt_image = QImage(rgb_frame.data, w_frame, h_frame, bytes_per_line, QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qt_image)
         container_size = self.video_label.parent().size()
         scaled_pixmap = pixmap.scaled(container_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        
-        # Накладання рамок і тексту за допомогою QPainter (залишається без змін)
+
         painter = QPainter(scaled_pixmap)
-        pen = QPen(QColor(0, 255, 0))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        font = QFont()
-        font.setPointSize(12)
-        painter.setFont(font)
         scale_x = scaled_pixmap.width() / w_frame
         scale_y = scaled_pixmap.height() / h_frame
+
+        # Для кожного обличчя відображаємо або landmarks, або рамку – але текст (ім'я та опис) відображається завжди.
         for face in detected_faces:
             x, y, fw, fh = face["bbox"]
             rx = int(x * scale_x)
             ry = int(y * scale_y)
             rfw = int(fw * scale_x)
             rfh = int(fh * scale_y)
-            painter.drawRect(rx, ry, rfw, rfh)
-            painter.drawText(rx, ry - 5, face["label"])
+
+            if self.draw_landmarks:
+                # Режим landmarks: малюємо зелені точки для кожного landmark
+                pen = QPen(QColor(0, 255, 0), 2)  # зелений колір, товщина 2
+                painter.setPen(pen)
+                landmarks = face.get("landmarks", {})
+                for feature, points in landmarks.items():
+                    for point in points:
+                        px = int(point[0] * scale_x)
+                        py = int(point[1] * scale_y)
+                        painter.drawEllipse(px - 2, py - 2, 4, 4)
+            else:
+                # Режим рамок: малюємо зелену рамку навколо обличчя
+                pen = QPen(QColor(0, 255, 0))
+                pen.setWidth(2)
+                painter.setPen(pen)
+                painter.drawRect(rx, ry, rfw, rfh)
+
+            # Відображення імені (label)
+            label = face["label"]
+            fm = painter.fontMetrics()
+            text_width = fm.horizontalAdvance(label)
+            text_height = fm.height()
+            padding = 4  # відступ для зручного відображення
+            background_rect = QRect(rx, max(ry - text_height - 2 * padding, 0), text_width + 2 * padding, text_height + 2 * padding)
+            painter.fillRect(background_rect, QColor(0, 255, 0))
+            painter.setPen(Qt.black)
+            painter.drawText(background_rect, Qt.AlignCenter, label)
+
+            # Відображення опису (якщо є)
             if face["description"]:
-                lines = face["description"].splitlines()
-                for i, line in enumerate(lines):
-                    painter.drawText(rx, ry + rfh + 20 + i * 15, line)
+                description_lines = face["description"].splitlines()
+                for i, line in enumerate(description_lines):
+                    line_width = fm.horizontalAdvance(line)
+                    line_rect = QRect(rx, ry + rfh + i * (text_height + padding), line_width + 2 * padding, text_height + 2 * padding)
+                    painter.fillRect(line_rect, QColor(0, 255, 0))
+                    painter.setPen(Qt.black)
+                    painter.drawText(line_rect, Qt.AlignCenter, line)
+
         painter.end()
-        
         self.video_label.setPixmap(scaled_pixmap)
-        
-        # <<-- Оновлення списку "LIST CURRENT" -->> 
+
+        # Оновлюємо список "LIST CURRENT"
         self.current_list.clear()
         for face in detected_faces:
             self.current_list.addItem(face["label"])
@@ -539,6 +578,13 @@ class FaceRecognitionApp(QMainWindow):
         self.capture.release()
         self.save_saved_faces()
         event.accept()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_V:
+            self.draw_landmarks = not self.draw_landmarks
+            print("Режим landmarks:", self.draw_landmarks)
+        super().keyPressEvent(event)
+
 
 
 if __name__ == '__main__':
