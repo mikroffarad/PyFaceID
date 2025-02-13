@@ -162,5 +162,4 @@ cython_debug/
 #.idea/
 
 # ====Project====
-saved_faces/
-saved_faces.json
+face_data/
