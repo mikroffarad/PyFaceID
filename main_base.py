@@ -18,6 +18,54 @@ videocapture_source = int(input("Enter a videocapture source: "))
 # Допустимі розширення зображень
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
+class AboutDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("About PyFaceID")
+        self.setModal(True)
+        self.resize(400, 350)
+
+        layout = QVBoxLayout(self)
+
+        # Назва програми
+        title = QLabel("PyFaceID")
+        title_font = QFont()
+        title_font.setPointSize(20)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        # Короткий опис програми
+        description_text = (
+            "PyFaceID is a facial recognition system written in Python using OpenCV and face_recognition library.\n"
+            "The program allows you to capture, edit and save data about the face.\n"
+            "It also provides quick access to functions using hotkeys."
+        )
+        description = QLabel(description_text)
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        # Гарячі клавіші та їх призначення
+        hotkeys_text = (
+            "Hotkeys:\n"
+            "Capture (c) – Capture face\n"
+            "Info (i) – View face information (read-only)\n"
+            "Edit (e) – Edit face information\n"
+            "Delete (d) – Delete face\n"
+            "About (a) – Open this window\n"
+            "Quit (q) – Exit the program\n"
+            "(v) –Toggle face landmarks\n"
+        )
+        hotkeys_label = QLabel(hotkeys_text)
+        hotkeys_label.setWordWrap(True)
+        layout.addWidget(hotkeys_label)
+
+        # Кнопка "Ok" для закриття діалогу
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok)
+        button_box.accepted.connect(self.accept)
+        layout.addWidget(button_box)
+
 class FaceDialog(QDialog):
     """
     Діалогове вікно для введення/редагування інформації про обличчя.
@@ -125,11 +173,12 @@ class FaceRecognitionApp(QMainWindow):
     # Папка, де зберігаються зображення та файли з кодуванням
     SAVED_FACES_FOLDER = "saved_faces"     
     
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Face Recognition System")
         self.showFullScreen()
-        # Списки для відстеження облич та інші змінні...
+
         self.unknown_faces = []
         self.saved_faces = []
         self.next_unknown_id = 1
@@ -187,26 +236,36 @@ class FaceRecognitionApp(QMainWindow):
         self.saved_list = QListWidget()
         right_layout.addWidget(self.saved_list)
 
-        # Створюємо кнопки "Info" та "Edit" в одному рядку
-        buttons_layout = QHBoxLayout()
+        # Рядок з кнопками Info та Edit
+        info_edit_layout = QHBoxLayout()
         self.info_btn = QPushButton("Info (i)")
         self.info_btn.clicked.connect(self.show_info)
         self.edit_btn = QPushButton("Edit (e)")
         self.edit_btn.clicked.connect(self.edit_face)
-        buttons_layout.addWidget(self.info_btn)
-        buttons_layout.addWidget(self.edit_btn)
-        right_layout.addLayout(buttons_layout)
+        info_edit_layout.addWidget(self.info_btn)
+        info_edit_layout.addWidget(self.edit_btn)
+        right_layout.addLayout(info_edit_layout)
 
+        # Кнопка Delete (d)
         self.delete_btn = QPushButton("Delete (d)")
         self.delete_btn.clicked.connect(self.delete_face)
+        right_layout.addWidget(self.delete_btn)
+
+        # Рядок з кнопками About та Quit
+        about_quit_layout = QHBoxLayout()
+        self.about_btn = QPushButton("About (a)")
+        self.about_btn.clicked.connect(self.show_about)
+        about_quit_layout.addWidget(self.about_btn)
+
         self.quit_btn = QPushButton("Quit (q)")
         self.quit_btn.clicked.connect(self.close)
-
-        right_layout.addWidget(self.delete_btn)
-        right_layout.addWidget(self.quit_btn)
+        about_quit_layout.addWidget(self.quit_btn)
+        right_layout.addLayout(about_quit_layout)
 
         main_layout.addWidget(right_widget, stretch=0)
 
+        # --- Прив'язка клавіш через QShortcut ---
+        from PySide6.QtGui import QShortcut, QKeySequence
         self.shortcut_capture = QShortcut(QKeySequence(Qt.Key_C), self)
         self.shortcut_capture.activated.connect(self.capture_btn.click)
 
@@ -219,20 +278,28 @@ class FaceRecognitionApp(QMainWindow):
         self.shortcut_delete = QShortcut(QKeySequence(Qt.Key_D), self)
         self.shortcut_delete.activated.connect(self.delete_btn.click)
 
+        self.shortcut_about = QShortcut(QKeySequence(Qt.Key_A), self)
+        self.shortcut_about.activated.connect(self.about_btn.click)
+
         self.shortcut_quit = QShortcut(QKeySequence(Qt.Key_Q), self)
         self.shortcut_quit.activated.connect(self.quit_btn.click)
 
-        # --- Після побудови інтерфейсу завантажуємо дані ---
+        # --- Завантаження даних та налаштування відеопотоку ---
         self.load_saved_faces()
         self.scan_saved_faces_folder()
 
-        # Налаштування відеопотоку
         self.capture = cv2.VideoCapture(videocapture_source)
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30)  # приблизно 33 fps
 
         self.detection_model = "hog"
+
+    # Метод для відкриття About-діалогу
+    def show_about(self):
+        dlg = AboutDialog(self)
+        dlg.exec()
+
 
     # Метод для перегляду інформації (read‑only режим)
     def show_info(self):
