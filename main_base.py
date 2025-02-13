@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit, 
                                QDialogButtonBox, QFileDialog, QMessageBox)
 from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop, QRect
-from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
+from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence
 
 # Вибір джерела відео (наприклад, 0 для вебкамери)
 videocapture_source = int(input("Enter a videocapture source: "))
@@ -24,43 +24,58 @@ class FaceDialog(QDialog):
     Показує зображення обличчя, поле для імені та опису.
     Додано кнопку "Change Photo" для зміни зображення.
     """
-    def __init__(self, face_pixmap, init_name="", init_description="", init_encoding=None, parent=None):
+    def __init__(self, face_pixmap, init_name="", init_description="", init_encoding=None, read_only=False, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Face Capture / Edit")
+
+        # Встановлюємо заголовок в залежності від режиму
+        if read_only:
+            self.setWindowTitle("Face Capture / Edit / Info")
+        else:
+            self.setWindowTitle("Face Capture / Edit")
+
         self.setModal(True)
         self.resize(400, 500)
-        
+
         self.face_pixmap = face_pixmap
         self.face_encoding = init_encoding
-        
+
         layout = QVBoxLayout(self)
-        
+
         self.face_label = QLabel()
         self.face_label.setAlignment(Qt.AlignCenter)
         if not face_pixmap.isNull():
             self.face_label.setPixmap(face_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         layout.addWidget(self.face_label)
-        
+
         self.change_photo_btn = QPushButton("Change Photo")
         self.change_photo_btn.clicked.connect(self.change_photo)
         layout.addWidget(self.change_photo_btn)
-        
+
         self.name_edit = QLineEdit(init_name)
         self.name_edit.setPlaceholderText("Enter name")
         layout.addWidget(QLabel("Name:"))
         layout.addWidget(self.name_edit)
-        
+
         self.desc_edit = QTextEdit()
         self.desc_edit.setPlainText(init_description)
         self.desc_edit.setPlaceholderText("Enter description")
         layout.addWidget(QLabel("Description:"))
         layout.addWidget(self.desc_edit)
-        
+
         self.button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
-    
+
+        # Якщо режим тільки для перегляду, відключаємо редагування
+        if read_only:
+            self.name_edit.setDisabled(True)
+            self.desc_edit.setDisabled(True)
+            self.change_photo_btn.setDisabled(True)
+            save_btn = self.button_box.button(QDialogButtonBox.Save)
+            if save_btn:
+                save_btn.setDisabled(True)
+
     def change_photo(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -89,14 +104,14 @@ class FaceDialog(QDialog):
                 self.face_label.setPixmap(new_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Error processing image: {e}")
-    
+
     def numpy2pixmap(self, image_np):
         image_np = np.ascontiguousarray(image_np)
         h, w, ch = image_np.shape
         bytes_per_line = ch * w
         qt_image = QImage(image_np.data, w, h, bytes_per_line, QImage.Format_RGB888)
         return QPixmap.fromImage(qt_image)
-    
+
     def getData(self):
         return (self.name_edit.text(),
                 self.desc_edit.toPlainText(),
@@ -114,92 +129,134 @@ class FaceRecognitionApp(QMainWindow):
         super().__init__()
         self.setWindowTitle("Face Recognition System")
         self.showFullScreen()
-        
-        # Списки для відстеження облич
-        self.unknown_faces = []   # невідомі обличчя (ті, що поки не збережені користувачем)
-        self.saved_faces = []     # збережені обличчя
+        # Списки для відстеження облич та інші змінні...
+        self.unknown_faces = []
+        self.saved_faces = []
         self.next_unknown_id = 1
-        
-        self.draw_landmarks = False # False – рамки, True – landmarks
+        self.draw_landmarks = False
 
         # --- Побудова графічного інтерфейсу ---
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QHBoxLayout(main_widget)
         main_layout.setSpacing(10)
-        
+
         # Ліва частина – відео
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setSpacing(0)
-        
+
         video_container = QFrame()
         video_container.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         video_container.setLayout(QVBoxLayout())
         video_container.layout().setContentsMargins(0, 0, 0, 0)
-        
+
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        
+
         self.video_label = QLabel()
         self.video_label.setAlignment(Qt.AlignCenter)
         scroll_area.setWidget(self.video_label)
-        
+
         video_container.layout().addWidget(scroll_area)
         left_layout.addWidget(video_container, stretch=1)
-        
+
         bottom_panel = QWidget()
         bottom_layout = QHBoxLayout(bottom_panel)
         bottom_layout.setContentsMargins(0, 10, 0, 0)
-        
-        self.capture_btn = QPushButton("Capture")
+
+        self.capture_btn = QPushButton("Capture (c)")
         self.capture_btn.clicked.connect(self.capture_frames)
         bottom_layout.addWidget(self.capture_btn)
-        
+
         left_layout.addWidget(bottom_panel, alignment=Qt.AlignBottom)
         main_layout.addWidget(left_widget, stretch=2)
-        
+
         # Права частина – списки та кнопки
         right_widget = QWidget()
         right_widget.setFixedWidth(300)
         right_layout = QVBoxLayout(right_widget)
-        
+
         right_layout.addWidget(QLabel("LIST CURRENT"))
         self.current_list = QListWidget()
         right_layout.addWidget(self.current_list)
-        
+
         right_layout.addWidget(QLabel("ALL SAVED"))
         self.saved_list = QListWidget()
         right_layout.addWidget(self.saved_list)
-        
-        self.edit_btn = QPushButton("Edit")
-        self.delete_btn = QPushButton("Delete")
-        self.quit_btn = QPushButton("Quit")
-        self.quit_btn.clicked.connect(self.close)
-        
+
+        # Створюємо кнопки "Info" та "Edit" в одному рядку
+        buttons_layout = QHBoxLayout()
+        self.info_btn = QPushButton("Info (i)")
+        self.info_btn.clicked.connect(self.show_info)
+        self.edit_btn = QPushButton("Edit (e)")
         self.edit_btn.clicked.connect(self.edit_face)
+        buttons_layout.addWidget(self.info_btn)
+        buttons_layout.addWidget(self.edit_btn)
+        right_layout.addLayout(buttons_layout)
+
+        self.delete_btn = QPushButton("Delete (d)")
         self.delete_btn.clicked.connect(self.delete_face)
-        
-        right_layout.addWidget(self.edit_btn)
+        self.quit_btn = QPushButton("Quit (q)")
+        self.quit_btn.clicked.connect(self.close)
+
         right_layout.addWidget(self.delete_btn)
         right_layout.addWidget(self.quit_btn)
-        
+
         main_layout.addWidget(right_widget, stretch=0)
-        
+
+        self.shortcut_capture = QShortcut(QKeySequence(Qt.Key_C), self)
+        self.shortcut_capture.activated.connect(self.capture_btn.click)
+
+        self.shortcut_info = QShortcut(QKeySequence(Qt.Key_I), self)
+        self.shortcut_info.activated.connect(self.info_btn.click)
+
+        self.shortcut_edit = QShortcut(QKeySequence(Qt.Key_E), self)
+        self.shortcut_edit.activated.connect(self.edit_btn.click)
+
+        self.shortcut_delete = QShortcut(QKeySequence(Qt.Key_D), self)
+        self.shortcut_delete.activated.connect(self.delete_btn.click)
+
+        self.shortcut_quit = QShortcut(QKeySequence(Qt.Key_Q), self)
+        self.shortcut_quit.activated.connect(self.quit_btn.click)
+
         # --- Після побудови інтерфейсу завантажуємо дані ---
         self.load_saved_faces()
         self.scan_saved_faces_folder()
-        
+
         # Налаштування відеопотоку
         self.capture = cv2.VideoCapture(videocapture_source)
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30)  # приблизно 33 fps
-        
-        # Використовуємо face_recognition для виявлення облич
+
         self.detection_model = "hog"
+
+    # Метод для перегляду інформації (read‑only режим)
+    def show_info(self):
+        selected_items = self.saved_list.selectedItems()
+        if not selected_items:
+            return
+        item = selected_items[0]
+        face = next((f for f in self.saved_faces if f["name"] == item.text()), None)
+        if face is None:
+            return
+
+        # Якщо pixmap не завантажено – завантажуємо з image_path
+        if face["pixmap"] is None and os.path.exists(face["image_path"]):
+            face["pixmap"] = QPixmap(face["image_path"])
+
+        dlg = FaceDialog(
+            face_pixmap=face["pixmap"] if face["pixmap"] is not None else QPixmap(),
+            init_name=face["name"],
+            init_description=face["description"],
+            init_encoding=face.get("encoding", None),
+            read_only=True,  # Вказуємо, що це лише для перегляду
+            parent=self
+        )
+        dlg.exec()
     
     def load_saved_faces(self):
         """Завантаження метаданих з JSON-файлу."""
