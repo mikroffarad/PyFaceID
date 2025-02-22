@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit,
                                QDialogButtonBox, QFileDialog, QMessageBox)
 from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop, QRect
-from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence
+from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence, QKeyEvent
 
 video_capture_source = cv2.VideoCapture(int(input("Enter a videocapture source: ")))
 
@@ -25,7 +25,7 @@ class AboutDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("About PyFaceID")
         self.setModal(True)
-        self.resize(400, 350)
+        self.resize(400, 400)
 
         layout = QVBoxLayout(self)
 
@@ -64,20 +64,20 @@ class AboutDialog(QDialog):
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)
 
+
+class CustomTextEdit(QTextEdit):
+    """Кастомний QTextEdit, який не дозволяє табуляцію всередині."""
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_Tab:
+            self.focusNextPrevChild(True)  # Переміщення фокусу далі
+        else:
+            super().keyPressEvent(event)
+
 class FaceDialog(QDialog):
-    """
-    Діалогове вікно для введення/редагування інформації про обличчя.
-    Показує зображення обличчя, поле для імені та опису.
-    Додано кнопку "Change Photo" для зміни зображення.
-    """
     def __init__(self, face_pixmap, init_name="", init_description="", init_encoding=None, read_only=False, parent=None):
         super().__init__(parent)
 
-        if read_only:
-            self.setWindowTitle("Face Capture / Edit / Info")
-        else:
-            self.setWindowTitle("Face Capture / Edit")
-
+        self.setWindowTitle("Face Capture / Edit" if not read_only else "Face Capture / Edit / Info")
         self.setModal(True)
         self.resize(400, 500)
 
@@ -101,7 +101,7 @@ class FaceDialog(QDialog):
         layout.addWidget(QLabel("Name:"))
         layout.addWidget(self.name_edit)
 
-        self.desc_edit = QTextEdit()
+        self.desc_edit = CustomTextEdit()  # Використовуємо кастомний QTextEdit
         self.desc_edit.setPlainText(init_description)
         self.desc_edit.setPlaceholderText("Enter description")
         layout.addWidget(QLabel("Description:"))
@@ -112,21 +112,41 @@ class FaceDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
 
+        self.save_btn = self.button_box.button(QDialogButtonBox.Save)
+        self.cancel_btn = self.button_box.button(QDialogButtonBox.Cancel)
+
+        if self.save_btn:
+            self.save_btn.setText("Save (Ctrl+S)")
+            self.save_btn.clicked.connect(self.accept)
+
+        if self.cancel_btn:
+            self.cancel_btn.setText("Cancel (Esc)")
+            self.cancel_btn.clicked.connect(self.reject)
+
         if read_only:
             self.name_edit.setDisabled(True)
             self.desc_edit.setDisabled(True)
             self.change_photo_btn.setDisabled(True)
-            save_btn = self.button_box.button(QDialogButtonBox.Save)
-            if save_btn:
-                save_btn.setDisabled(True)
+            if self.save_btn:
+                self.save_btn.setDisabled(True)
+
+        # Встановлення порядку фокусу
+        self.setTabOrder(self.name_edit, self.desc_edit)
+        self.setTabOrder(self.desc_edit, self.save_btn)
+        self.setTabOrder(self.save_btn, self.cancel_btn)
+        self.setTabOrder(self.cancel_btn, self.change_photo_btn)
+        self.setTabOrder(self.change_photo_btn, self.name_edit)  # Робимо цикл
+
+        # Додаємо гарячу клавішу Ctrl+S для збереження
+        self.shortcut_save = QShortcut("Ctrl+S", self)
+        self.shortcut_save.activated.connect(self.accept)
+
+        # Встановлюємо фокус на поле "Name" при відкритті
+        self.name_edit.setFocus()
 
     def change_photo(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Image",
-            "",
-            "Image Files (*.jpg *.jpeg *.png *.bmp)",
-            options=QFileDialog.DontUseNativeDialog
+            self, "Select Image", "", "Image Files (*.jpg *.jpeg *.png *.bmp)", options=QFileDialog.DontUseNativeDialog
         )
         if file_path:
             try:
@@ -157,10 +177,7 @@ class FaceDialog(QDialog):
         return QPixmap.fromImage(qt_image)
 
     def getData(self):
-        return (self.name_edit.text(),
-                self.desc_edit.toPlainText(),
-                self.face_pixmap,
-                self.face_encoding)
+        return (self.name_edit.text(), self.desc_edit.toPlainText(), self.face_pixmap, self.face_encoding)
 
 # ------------------ ГОЛОВНИЙ КЛАС ПРИЛОЖЕННЯ ------------------
 
