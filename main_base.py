@@ -598,12 +598,19 @@ class FaceRecognitionApp(QMainWindow):
 
             if face["description"]:
                 description_lines = face["description"].splitlines()
+                max_width = max(fm.horizontalAdvance(line) for line in description_lines)
                 for i, line in enumerate(description_lines):
-                    line_width = fm.horizontalAdvance(line)
-                    line_rect = QRect(rx, ry + rfh + i * (text_height + padding), line_width + 2 * padding, text_height + 2 * padding)
+                    # Розраховуємо прямокутник фону із загальним розміром, що базується на максимальній ширині
+                    line_rect = QRect(rx, ry + rfh + i * (text_height + padding), max_width + 2 * padding, text_height + 2 * padding)
                     painter.fillRect(line_rect, QColor(0, 255, 0))
                     painter.setPen(Qt.black)
-                    painter.drawText(line_rect, Qt.AlignCenter, line)
+                    # Визначаємо внутрішній прямокутник для тексту із відступами з усіх сторін
+                    inner_rect = QRect(line_rect.left() + padding, line_rect.top() + padding,
+                                    line_rect.width() - 2 * padding, line_rect.height() - 2 * padding)
+                    painter.drawText(inner_rect, Qt.AlignLeft | Qt.AlignVCenter, line)
+
+
+
 
         painter.end()
         self.video_label.setPixmap(scaled_pixmap)
