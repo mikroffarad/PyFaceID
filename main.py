@@ -535,8 +535,8 @@ class FaceRecognitionApp(QMainWindow):
                 face_entry = {
                     "id": face_id,
                     "encoding": encoding,
-                    "bbox": (x, y, w, h),
-                    "pixmap": self.numpy2pixmap(crop),
+                            "bbox": (x, y, w, h),
+            "pixmap": self.numpy2pixmap(crop),
                     "name": name,
                     "description": "",
                     "detected": True
@@ -586,29 +586,75 @@ class FaceRecognitionApp(QMainWindow):
                 painter.setPen(pen)
                 painter.drawRect(rx, ry, rfw, rfh)
 
-            label = face["label"]
-            fm = painter.fontMetrics()
-            text_width = fm.horizontalAdvance(label)
-            text_height = fm.height()
-            padding = 4
-            background_rect = QRect(rx, max(ry - text_height - 2 * padding, 0), text_width + 2 * padding, text_height + 2 * padding)
-            painter.fillRect(background_rect, QColor(0, 255, 0))
-            painter.setPen(Qt.black)
-            painter.drawText(background_rect, Qt.AlignCenter, label)
+            # Зовнішні відступи (margin) для різних сторін:
+            external_offset_left = 8            # відступ від лівої межі обличчя до текстового блоку
+            external_offset_name = 8            # відступ від верхньої межі обличчя до блоку з ім'ям
+            external_offset_description = 8     # відступ від нижньої межі обличчя до блоку з описом
 
+            # Внутрішній відступ (padding) всередині блоку з текстом:
+            internal_padding = 4
+
+            # Змінна для регулювання округлення кутів:
+            border_radius = 10
+
+            fm = painter.fontMetrics()
+
+            # Рендеринг заголовка (ім'я) над обличчям:
+            label = face["label"]
+            label_width = fm.horizontalAdvance(label)
+            label_height = fm.height()
+
+            label_bg_width = label_width + 2 * internal_padding
+            label_bg_height = label_height + 2 * internal_padding
+            # Нижня межа блоку з ім'ям буде external_offset_name пікселів вище верхньої межі обличчя
+            label_bg_bottom = ry - external_offset_name
+            label_bg_top = max(label_bg_bottom - label_bg_height, 0)
+            label_bg_x = rx + external_offset_left
+
+            label_background_rect = QRect(label_bg_x, label_bg_top, label_bg_width, label_bg_height)
+
+            # Вмикаємо згладжування для кращої якості округлених кутів
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(0, 255, 0))
+            painter.drawRoundedRect(label_background_rect, border_radius, border_radius)
+            painter.setPen(Qt.black)
+
+            label_text_rect = QRect(
+                label_background_rect.left() + internal_padding,
+                label_background_rect.top() + internal_padding,
+                label_width,
+                label_height
+            )
+            painter.drawText(label_text_rect, Qt.AlignLeft | Qt.AlignVCenter, label)
+
+            # Рендеринг опису під обличчям:
             if face["description"]:
                 description_lines = face["description"].splitlines()
-                max_width = max(fm.horizontalAdvance(line) for line in description_lines)
-                for i, line in enumerate(description_lines):
-                    # Розраховуємо прямокутник фону із загальним розміром, що базується на максимальній ширині
-                    line_rect = QRect(rx, ry + rfh + i * (text_height + padding), max_width + 2 * padding, text_height + 2 * padding)
-                    painter.fillRect(line_rect, QColor(0, 255, 0))
-                    painter.setPen(Qt.black)
-                    # Визначаємо внутрішній прямокутник для тексту із відступами з усіх сторін
-                    inner_rect = QRect(line_rect.left() + padding, line_rect.top() + padding,
-                                    line_rect.width() - 2 * padding, line_rect.height() - 2 * padding)
-                    painter.drawText(inner_rect, Qt.AlignLeft | Qt.AlignVCenter, line)
+                max_line_width = max(fm.horizontalAdvance(line) for line in description_lines)
+                total_text_height = len(description_lines) * label_height
 
+                desc_bg_x = rx + external_offset_left
+                desc_bg_y = ry + rfh + external_offset_description
+                desc_bg_width = max_line_width + 2 * internal_padding
+                desc_bg_height = total_text_height + 2 * internal_padding
+
+                desc_background_rect = QRect(desc_bg_x, desc_bg_y, desc_bg_width, desc_bg_height)
+                
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor(0, 255, 0))
+                painter.drawRoundedRect(desc_background_rect, border_radius, border_radius)
+                painter.setPen(Qt.black)
+
+                for idx, line in enumerate(description_lines):
+                    line_y = desc_background_rect.top() + internal_padding + idx * label_height
+                    line_rect = QRect(
+                        desc_background_rect.left() + internal_padding,
+                        line_y,
+                        max_line_width,
+                        label_height
+                    )
+                    painter.drawText(line_rect, Qt.AlignLeft | Qt.AlignVCenter, line)
 
 
 
