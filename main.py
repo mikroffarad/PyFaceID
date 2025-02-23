@@ -9,7 +9,7 @@ import shutil  # для видалення теки при видаленні о
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLabel, QPushButton, QListWidget,
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit,
-                               QDialogButtonBox, QFileDialog, QMessageBox)
+                               QDialogButtonBox, QFileDialog, QMessageBox, QGridLayout)
 from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop, QRect
 from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence, QKeyEvent
 
@@ -77,65 +77,64 @@ class FaceDialog(QDialog):
     def __init__(self, face_pixmap, init_name="", init_description="", init_encoding=None, read_only=False, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("Face Capture / Edit" if not read_only else "Face Capture / Edit / Info")
+        self.setWindowTitle("Capture / Edit face window" if not read_only else "Capture / Edit / Info")
         self.setModal(True)
-        self.resize(400, 500)
+        self.resize(600, 200)
 
         self.face_pixmap = face_pixmap
         self.face_encoding = init_encoding
 
-        layout = QVBoxLayout(self)
+        # Головний макет
+        main_layout = QHBoxLayout(self)
 
+        # Ліва частина (Фото + кнопка "Change photo")
+        left_layout = QVBoxLayout()
         self.face_label = QLabel()
         self.face_label.setAlignment(Qt.AlignCenter)
         if not face_pixmap.isNull():
             self.face_label.setPixmap(face_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        layout.addWidget(self.face_label)
+        left_layout.addWidget(self.face_label)
 
-        self.change_photo_btn = QPushButton("Change Photo")
+        self.change_photo_btn = QPushButton("Change photo")
         self.change_photo_btn.clicked.connect(self.change_photo)
-        layout.addWidget(self.change_photo_btn)
+        left_layout.addWidget(self.change_photo_btn)
 
+        main_layout.addLayout(left_layout)
+
+        # Права частина (Текстові поля)
+        right_layout = QVBoxLayout()
+
+        self.name_label = QLabel("Name:")
         self.name_edit = QLineEdit(init_name)
-        self.name_edit.setPlaceholderText("Enter name")
-        layout.addWidget(QLabel("Name:"))
-        layout.addWidget(self.name_edit)
+        right_layout.addWidget(self.name_label)
+        right_layout.addWidget(self.name_edit)
 
-        self.desc_edit = CustomTextEdit()  # Використовуємо кастомний QTextEdit
+        self.desc_label = QLabel("Description:")
+        self.desc_edit = QTextEdit()
         self.desc_edit.setPlainText(init_description)
-        self.desc_edit.setPlaceholderText("Enter description")
-        layout.addWidget(QLabel("Description:"))
-        layout.addWidget(self.desc_edit)
+        right_layout.addWidget(self.desc_label)
+        right_layout.addWidget(self.desc_edit)
 
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box)
+        main_layout.addLayout(right_layout)
 
-        self.save_btn = self.button_box.button(QDialogButtonBox.Save)
-        self.cancel_btn = self.button_box.button(QDialogButtonBox.Cancel)
+        # Кнопки управління (знизу)
+        self.button_box = QDialogButtonBox()
+        self.cancel_btn = QPushButton("Cancel (Esc)")
+        self.cancel_btn.clicked.connect(self.reject)
+        self.save_btn = QPushButton("Save (Ctrl+S)")
+        self.save_btn.clicked.connect(self.accept)
 
-        if self.save_btn:
-            self.save_btn.setText("Save (Ctrl+S)")
-            self.save_btn.clicked.connect(self.accept)
+        self.button_box.addButton(self.cancel_btn, QDialogButtonBox.RejectRole)
+        self.button_box.addButton(self.save_btn, QDialogButtonBox.AcceptRole)
 
-        if self.cancel_btn:
-            self.cancel_btn.setText("Cancel (Esc)")
-            self.cancel_btn.clicked.connect(self.reject)
+        right_layout.addWidget(self.button_box)
 
+        # Якщо режим перегляду — блокуємо редагування
         if read_only:
             self.name_edit.setDisabled(True)
             self.desc_edit.setDisabled(True)
             self.change_photo_btn.setDisabled(True)
-            if self.save_btn:
-                self.save_btn.setDisabled(True)
-
-        # Встановлення порядку фокусу
-        self.setTabOrder(self.name_edit, self.desc_edit)
-        self.setTabOrder(self.desc_edit, self.save_btn)
-        self.setTabOrder(self.save_btn, self.cancel_btn)
-        self.setTabOrder(self.cancel_btn, self.change_photo_btn)
-        self.setTabOrder(self.change_photo_btn, self.name_edit)  # Робимо цикл
+            self.save_btn.setDisabled(True)
 
         # Додаємо гарячу клавішу Ctrl+S для збереження
         self.shortcut_save = QShortcut("Ctrl+S", self)
@@ -143,6 +142,7 @@ class FaceDialog(QDialog):
 
         # Встановлюємо фокус на поле "Name" при відкритті
         self.name_edit.setFocus()
+
 
     def change_photo(self):
         file_path, _ = QFileDialog.getOpenFileName(
