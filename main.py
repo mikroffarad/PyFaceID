@@ -9,7 +9,7 @@ import shutil  # для видалення теки при видаленні о
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLabel, QPushButton, QListWidget,
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit,
-                               QDialogButtonBox, QFileDialog, QMessageBox, QGridLayout)
+                               QDialogButtonBox, QFileDialog, QMessageBox, QGridLayout, QStyle)
 from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop, QRect
 from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence, QKeyEvent
 
@@ -19,6 +19,94 @@ video_capture_source = cv2.VideoCapture(int(input("Enter a videocapture source: 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 # ------------------ ДІАЛОГОВІ ВІКНА ------------------
+
+class FaceInfoDialog(QDialog):
+    """
+    Вікно перегляду (read-only) інформації про обличчя.
+    Має кнопки "Edit (e)" та "Cancel (Esc)" із відповідними Qt-іконками.
+    При натисканні кнопки Edit (або гарячої клавіші 'e') відкривається FaceDialog у режимі редагування.
+    """
+
+    def __init__(self, face_pixmap, name="", description="", encoding=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Face Info")
+        self.face_pixmap = face_pixmap
+        self.name = name
+        self.description = description
+        self.encoding = encoding
+
+        self.init_ui()
+        self.init_shortcuts()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+
+        # Зона з фото
+        self.face_label = QLabel()
+        self.face_label.setAlignment(Qt.AlignCenter)
+        if self.face_pixmap and not self.face_pixmap.isNull():
+            self.face_label.setPixmap(self.face_pixmap.scaled(300, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        main_layout.addWidget(self.face_label)
+
+        # Ім'я (лейбл)
+        name_layout = QHBoxLayout()
+        name_label = QLabel("Name:")
+        self.name_value_label = QLabel(self.name)
+        self.name_value_label.setWordWrap(True)
+        name_layout.addWidget(name_label)
+        name_layout.addWidget(self.name_value_label)
+        main_layout.addLayout(name_layout)
+
+        # Опис (read-only QTextEdit із прокруткою)
+        desc_label = QLabel("Description:")
+        main_layout.addWidget(desc_label)
+
+        self.desc_edit = QTextEdit()
+        self.desc_edit.setPlainText(self.description)
+        self.desc_edit.setReadOnly(True)
+        self.desc_edit.setMinimumHeight(60)
+        self.desc_edit.setMaximumHeight(100)
+        self.desc_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        main_layout.addWidget(self.desc_edit)
+
+        # Кнопки "Edit (e)" та "Cancel (Esc)" із іконками
+        self.button_box = QDialogButtonBox()
+        self.edit_btn = QPushButton("Edit (e)")
+        self.edit_btn.setIcon(QApplication.style().standardIcon(QStyle.SP_FileDialogDetailedView))
+        self.edit_btn.clicked.connect(self.on_edit_requested)
+        self.cancel_btn = QPushButton("Cancel (Esc)")
+        self.cancel_btn.setIcon(QApplication.style().standardIcon(QStyle.SP_DialogCancelButton))
+        self.cancel_btn.clicked.connect(self.reject)
+        self.button_box.addButton(self.edit_btn, QDialogButtonBox.ActionRole)
+        self.button_box.addButton(self.cancel_btn, QDialogButtonBox.RejectRole)
+        main_layout.addWidget(self.button_box)
+
+    def init_shortcuts(self):
+        # Гаряча клавіша "e" для виклику редагування
+        self.shortcut_edit = QShortcut(QKeySequence(Qt.Key_E), self)
+        self.shortcut_edit.activated.connect(self.on_edit_requested)
+
+    def on_edit_requested(self):
+        dlg = FaceDialog(
+            face_pixmap=self.face_pixmap,
+            init_name=self.name,
+            init_description=self.description,
+            init_encoding=self.encoding,
+            mode="edit",
+            parent=self
+        )
+        if dlg.exec() == QDialog.Accepted:
+            new_name, new_description, new_pixmap, new_encoding = dlg.getData()
+            self.name = new_name
+            self.description = new_description
+            self.face_pixmap = new_pixmap
+            self.encoding = new_encoding
+            self.name_value_label.setText(self.name)
+            self.desc_edit.setPlainText(self.description)
+            if self.face_pixmap and not self.face_pixmap.isNull():
+                self.face_label.setPixmap(
+                    self.face_pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
@@ -73,11 +161,17 @@ class CustomTextEdit(QTextEdit):
         else:
             super().keyPressEvent(event)
 
-class FaceDialog(QDialog):
-    def __init__(self, face_pixmap, init_name="", init_description="", init_encoding=None, read_only=False, parent=None):
-        super().__init__(parent)
 
-        self.setWindowTitle("Capture / Edit face window" if not read_only else "Capture / Edit / Info")
+class FaceDialog(QDialog):
+    def __init__(self, face_pixmap, init_name="", init_description="", init_encoding=None, mode="capture", parent=None):
+        super().__init__(parent)
+        # Встановлюємо заголовок вікна відповідно до режиму
+        if mode == "capture":
+            self.setWindowTitle("Capture Face")
+        elif mode == "edit":
+            self.setWindowTitle("Edit Face")
+        else:
+            self.setWindowTitle("Face")
         self.setModal(True)
         self.resize(600, 200)
 
@@ -117,32 +211,25 @@ class FaceDialog(QDialog):
 
         main_layout.addLayout(right_layout)
 
-        # Кнопки управління (знизу)
+        # Кнопки управління з іконками
         self.button_box = QDialogButtonBox()
         self.cancel_btn = QPushButton("Cancel (Esc)")
+        self.cancel_btn.setIcon(QApplication.style().standardIcon(QStyle.SP_DialogCancelButton))
         self.cancel_btn.clicked.connect(self.reject)
         self.save_btn = QPushButton("Save (Ctrl+S)")
+        self.save_btn.setIcon(QApplication.style().standardIcon(QStyle.SP_DialogSaveButton))
         self.save_btn.clicked.connect(self.accept)
 
         self.button_box.addButton(self.cancel_btn, QDialogButtonBox.RejectRole)
         self.button_box.addButton(self.save_btn, QDialogButtonBox.AcceptRole)
-
         right_layout.addWidget(self.button_box)
 
-        # Якщо режим перегляду — блокуємо редагування
-        if read_only:
-            self.name_edit.setDisabled(True)
-            self.desc_edit.setDisabled(True)
-            self.change_photo_btn.setDisabled(True)
-            self.save_btn.setDisabled(True)
-
-        # Додаємо гарячу клавішу Ctrl+S для збереження
-        self.shortcut_save = QShortcut("Ctrl+S", self)
+        # Гаряча клавіша Ctrl+S для збереження
+        self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self.accept)
 
-        # Встановлюємо фокус на поле "Name" при відкритті
+        # Встановлюємо фокус на поле "Name"
         self.name_edit.setFocus()
-
 
     def change_photo(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -323,15 +410,60 @@ class FaceRecognitionApp(QMainWindow):
         if face["pixmap"] is None and os.path.exists(face["image_path"]):
             face["pixmap"] = QPixmap(face["image_path"])
 
-        dlg = FaceDialog(
-            face_pixmap=face["pixmap"] if face["pixmap"] is not None else QPixmap(),
-            init_name=face["name"],
-            init_description=face["description"],
-            init_encoding=face.get("encoding", None),
-            read_only=True,
+    def show_info(self):
+        selected_items = self.saved_list.selectedItems()
+        if not selected_items:
+            return
+        item = selected_items[0]
+        face = next((f for f in self.saved_faces if f["name"] == item.text()), None)
+        if face is None:
+            return
+
+        # Завантажуємо pixmap, якщо ще не завантажений
+        if face["pixmap"] is None and os.path.exists(face["image_path"]):
+            face["pixmap"] = QPixmap(face["image_path"])
+
+        dlg = FaceInfoDialog(
+            face_pixmap=face["pixmap"] if face["pixmap"] else QPixmap(),
+            name=face["name"],
+            description=face["description"],
+            encoding=face.get("encoding", None),
             parent=self
         )
         dlg.exec()
+
+        # Після закриття діалогу перевіряємо, чи оновилися дані (користувач міг натиснути 'e' і зберегти зміни)
+        updated_name = dlg.name
+        updated_desc = dlg.description
+        updated_pixmap = dlg.face_pixmap
+        updated_encoding = dlg.encoding
+
+        # Якщо ім'я змінилося, треба перейменувати теку, оновити saved_faces тощо
+        if updated_name != face["name"]:
+            old_folder = os.path.join(self.FACE_DATA_FOLDER, face["name"])
+            new_folder = os.path.join(self.FACE_DATA_FOLDER, updated_name)
+            if os.path.exists(old_folder):
+                os.rename(old_folder, new_folder)
+            face["name"] = updated_name
+            face["image_path"] = os.path.join(new_folder, f"{updated_name}.jpg")
+            face["encoding_path"] = os.path.join(new_folder, f"{updated_name}.npy")
+            # Оновлюємо назву в QListWidget:
+            item.setText(updated_name)
+
+        face["description"] = updated_desc
+        face["pixmap"] = updated_pixmap
+        face["encoding"] = updated_encoding
+
+        # Зберігаємо зміни у файли, якщо треба
+        if face["pixmap"] and not face["pixmap"].isNull():
+            face["pixmap"].save(face["image_path"], "JPG")
+        if face["encoding"] is not None:
+            np.save(face["encoding_path"], face["encoding"])
+        
+        # Можливо, викличемо метод збереження JSON:
+        self.save_saved_faces()
+
+
 
     def load_saved_faces(self):
         """Завантаження метаданих з JSON-файлу."""
@@ -678,11 +810,12 @@ class FaceRecognitionApp(QMainWindow):
         unknowns = self.unknown_faces.copy()
         for face in unknowns:
             dlg = FaceDialog(
-                face_pixmap=face["pixmap"],
-                init_name=face["name"],
-                init_description=face["description"],
-                init_encoding=face.get("encoding", None),
-                parent=self
+            face_pixmap=face["pixmap"],
+            init_name=face["name"],
+            init_description=face["description"],
+            init_encoding=face.get("encoding", None),
+            mode="capture",
+            parent=self
             )
             result = dlg.exec()
             if result == QDialog.Accepted:
@@ -744,6 +877,7 @@ class FaceRecognitionApp(QMainWindow):
             init_name=face["name"],
             init_description=face["description"],
             init_encoding=face.get("encoding", None),
+            mode="edit",
             parent=self
         )
         result = dlg.exec()
