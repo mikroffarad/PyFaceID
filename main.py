@@ -11,14 +11,41 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit,
                                QDialogButtonBox, QFileDialog, QMessageBox, QGridLayout, QStyle)
 from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop, QRect
-from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence, QKeyEvent, QIcon
-
-video_capture_source = cv2.VideoCapture(int(input("Enter a videocapture source: ")))
+from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence, QKeyEvent, QIcon, QIntValidator
 
 # Допустимі розширення зображень
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 # ------------------ ДІАЛОГОВІ ВІКНА ------------------
+
+class VideoSourceDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Video Source")
+        self.setModal(True)
+        self.setFixedSize(300, 150)
+
+        layout = QVBoxLayout(self)
+
+        # Інструкція
+        label = QLabel("Enter a video source index (0 for default camera):")
+        layout.addWidget(label)
+
+        # Поле вводу (приймає тільки цифри)
+        self.input_field = QLineEdit(self)
+        self.input_field.setPlaceholderText("0, 1, 2...")
+        self.input_field.setValidator(QIntValidator(0, 99, self))  # Дозволяє тільки невід'ємні числа
+        layout.addWidget(self.input_field)
+
+        # Кнопки "OK" і "Cancel"
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+
+    def get_video_source(self):
+        text = self.input_field.text().strip()
+        return int(text) if text.isdigit() else None
 
 class FaceInfoDialog(QDialog):
     """
@@ -943,7 +970,22 @@ class FaceRecognitionApp(QMainWindow):
         super().keyPressEvent(event)
 
 if __name__ == '__main__':
+    
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("icon.svg"))
+
+    # Показуємо вікно вибору камери перед запуском програми
+    dialog = VideoSourceDialog()
+    if dialog.exec() == QDialog.Accepted:
+        source = dialog.get_video_source()
+        if source is None:
+            QMessageBox.critical(None, "Error", "Invalid video source. Please enter a number.")
+            sys.exit(1)
+    else:
+        sys.exit(0)
+
+    video_capture_source = cv2.VideoCapture(source)
+
     window = FaceRecognitionApp()
     sys.exit(app.exec())
+
