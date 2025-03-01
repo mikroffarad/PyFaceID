@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QFrame, QScrollArea, QDialog, QLineEdit, QTextEdit,
                                QDialogButtonBox, QFileDialog, QMessageBox, QGridLayout, QStyle)
 from PySide6.QtCore import Qt, QTimer, QSize, QEventLoop, QRect
-from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence, QKeyEvent
+from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QShortcut, QKeySequence, QKeyEvent, QIcon
 
 video_capture_source = cv2.VideoCapture(int(input("Enter a videocapture source: ")))
 
@@ -117,13 +117,25 @@ class AboutDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        layout_header = QHBoxLayout()
+                # Додаємо іконку
+        icon_label = QLabel()
+        icon_label.setPixmap(QPixmap("icon.svg").scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        layout_header.addWidget(icon_label)
+
+        # Додаємо заголовок
         title = QLabel("PyFaceID")
         title_font = QFont()
         title_font.setPointSize(20)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        layout_header.addWidget(title)
+
+        # Вирівнюємо контент по лівому краю
+        layout_header.setAlignment(Qt.AlignCenter)
+
+        layout.addLayout(layout_header)
+
 
         description_text = (
             "PyFaceID is a facial recognition system written in Python using OpenCV and face_recognition library.\n"
@@ -151,15 +163,6 @@ class AboutDialog(QDialog):
         button_box = QDialogButtonBox(QDialogButtonBox.Ok)
         button_box.accepted.connect(self.accept)
         layout.addWidget(button_box)
-
-
-class CustomTextEdit(QTextEdit):
-    """Кастомний QTextEdit, який не дозволяє табуляцію всередині."""
-    def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_Tab:
-            self.focusNextPrevChild(True)  # Переміщення фокусу далі
-        else:
-            super().keyPressEvent(event)
 
 
 class FaceDialog(QDialog):
@@ -941,5 +944,6 @@ class FaceRecognitionApp(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("icon.svg"))
     window = FaceRecognitionApp()
     sys.exit(app.exec())
