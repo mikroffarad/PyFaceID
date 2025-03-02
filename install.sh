@@ -14,7 +14,9 @@ source $SCRIPT_DIR/venv/bin/activate
 
 echo "$SCRIPT DIR"
 
-pip install opencv-python face_recognition pyside6
+# pip install opencv-python face_recognition pyside6
 
-pip install wheel setuptools pip --upgrade 
-pip install git+https://github.com/ageitgey/face_recognition_models --verbose
+# pip install wheel setuptools pip --upgrade 
+# pip install git+https://github.com/ageitgey/face_recognition_models --verbose
+
+pip install -r requirements.txt
