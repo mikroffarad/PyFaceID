@@ -29,6 +29,8 @@ fi
 echo "Starting build..."
 pyinstaller --onefile --windowed \
   --add-data "venv/lib/python3.*/site-packages/face_recognition_models/models/*:face_recognition_models/models" \
+  --add-data "assets/icon.svg:assets/icon.svg" \
   --name PyFaceID main.py
+
 
 echo "Build complete. Check the dist/ directory."

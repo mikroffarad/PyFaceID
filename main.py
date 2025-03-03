@@ -147,7 +147,7 @@ class AboutDialog(QDialog):
         layout_header = QHBoxLayout()
                 # Додаємо іконку
         icon_label = QLabel()
-        icon_label.setPixmap(QPixmap("icon.svg").scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        icon_label.setPixmap(QPixmap("assets/icon.svg").scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         layout_header.addWidget(icon_label)
 
         # Додаємо заголовок
@@ -972,7 +972,7 @@ class FaceRecognitionApp(QMainWindow):
 if __name__ == '__main__':
     
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("icon.svg"))
+    app.setWindowIcon(QIcon("assets/icon.svg"))
 
     # Показуємо вікно вибору камери перед запуском програми
     dialog = VideoSourceDialog()

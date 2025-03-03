@@ -1,5 +1,5 @@
   <h2 align="center">
-    <img src="icon.svg" alt="PyFaceID icon" width="96" height="96"/>
+    <img src="assets/icon.svg" alt="PyFaceID icon" width="96" height="96"/>
     <br>
     PyFaceID
   </h2>
